@@ -11,5 +11,10 @@
             "email": "wangzebin2@126.com"
         }
     ],
-    "minimum-stability": "dev"
+    "minimum-stability": "dev",
+    "autoload": {
+        "classmap": [
+            "src/"
+        ]
+    }
 }
