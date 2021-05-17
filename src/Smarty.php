@@ -12,7 +12,10 @@ namespace think\view\driver;
 
 use Smarty as BasicSmarty;
 use think\App;
+use think\facade\Log;
+use think\helper\Str;
 use think\Request;
+use think\template\exception\TemplateNotFoundException;
 
 class Smarty
 {
@@ -43,11 +46,11 @@ class Smarty
         $this->template->setRightDelimiter($this->config['tpl_end']);
         $this->template->setCaching($this->config['tpl_cache']);
         $this->template->setForceCompile(!$this->config['tpl_cache']); #是否强制编译
-        $this->template->setTemplateDir($this->config['view_dir_name']); #设置模板目录
+        //$this->template->setTemplateDir($this->config['view_dir_name']); #设置模板目录
         $this->template->merge_compiled_includes = true; #合并编译导入
 
-        $cacheDir = $this->app->runtimePath . 'tplcache' . DIRECTORY_SEPARATOR;
-        $compileDir = $this->app->runtimePath . 'compilecache' . DIRECTORY_SEPARATOR;
+        $cacheDir = $this->app->getRuntimePath() . 'tplcache' . $this->config['view_depr'];
+        $compileDir = $this->app->getRuntimePath() . 'compilecache' . $this->config['view_depr'];
         $this->template->setCacheDir($cacheDir); #设置缓存目录
         $this->template->setCompileDir($compileDir); #设置编译目录
     }
@@ -76,6 +79,7 @@ class Smarty
      * @return void
      */
     public function fetch($template, $data = []) {
+
         if ('' == pathinfo($template, PATHINFO_EXTENSION)) {
             // 获取模板文件名
             $template = $this->parseTemplate($template);
@@ -84,13 +88,22 @@ class Smarty
         if (!is_file($template)) {
             throw new TemplateNotFoundException('template not exists:' . $template, $template);
         }
+
         // 记录视图信息
-        App::$debug && Log::record('[ VIEW ] ' . $template . ' [ ' . var_export(array_keys($data), true) . ' ]', 'info');
-        // 定义模板常量
-        $default=$this->config['tpl_replace_string'];
-        // 赋值模板变量
+        $this->app->isDebug() && Log::record('[ VIEW ] ' . $template . ' [ ' . var_export(array_keys($data), true) . ' ]', 'info');
+
         !empty($template) && $this->template->assign($data);
-        return str_replace(array_keys($default), array_values($default), $this->template->fetch($template));
+        $output=null;
+        if(array_key_exists('tpl_replace_string',$this->config)){
+            // 定义模板常量
+            $default=$this->config['tpl_replace_string'];
+            //解析
+            $output= str_replace(array_keys($default), array_values($default), $this->template->fetch($template));
+        }else{
+            //解析
+            $output= $this->template->fetch($template);
+        }
+        echo $output;
     }
 
     /**
@@ -101,7 +114,7 @@ class Smarty
      * @return void
      */
     public function display($template, $data = []) {
-        echo $this->fetch($template, $data);
+        return $this->fetch($template, $data);
     }
 
     /**
@@ -134,31 +147,17 @@ class Smarty
      */
     private function parseTemplate($template)
     {
+        //设置模板路径
+        $this->setViewPath($template);
+
         // 分析模板文件规则
         $request = $this->app['request'];
+        $depr = $this->config['view_depr'];
 
-        // 获取视图根目录
         if (strpos($template, '@')) {
             // 跨模块调用
             list($app, $template) = explode('@', $template);
         }
-
-        if (isset($app)) {
-            $view     = $this->config['view_dir_name'];
-            $viewPath = $this->app->getBasePath() . $app . DIRECTORY_SEPARATOR . $view . DIRECTORY_SEPARATOR;
-
-            if (is_dir($viewPath)) {
-                $path = $viewPath;
-            } else {
-                $path = $this->app->getRootPath() . $view . DIRECTORY_SEPARATOR . $app . DIRECTORY_SEPARATOR;
-            }
-
-            $this->template->view_path = $path;
-        } else {
-            $path = $this->config['view_path'];
-        }
-
-        $depr = $this->config['view_depr'];
 
         if (0 !== strpos($template, '/')) {
             $template   = str_replace(['/', ':'], $depr, $template);
@@ -182,16 +181,49 @@ class Smarty
                         $template = Str::snake($request->action());
                     }
 
-                    $template = str_replace('.', DIRECTORY_SEPARATOR, $controller) . $depr . $template;
+                    $template = str_replace('.', $this->config['view_depr'], $controller) . $depr . $template;
                 } elseif (false === strpos($template, $depr)) {
-                    $template = str_replace('.', DIRECTORY_SEPARATOR, $controller) . $depr . $template;
+                    $template = str_replace('.', $this->config['view_depr'], $controller) . $depr . $template;
                 }
             }
         } else {
             $template = str_replace(['/', ':'], $depr, substr($template, 1));
         }
 
+        $path=$this->template->template_dir[0];
+
         return $path . ltrim($template, '/') . '.' . ltrim($this->config['view_suffix'], '.');
+    }
+
+    /**
+     * 设置模板路径
+     */
+    private function setViewPath($template){
+        // 获取视图根目录
+        $viewPath='';
+        $view=$this->config['view_dir_name'];
+        if (strpos($template, '@')) {
+            // 跨模块调用
+            list($app, $template) = explode('@', $template);
+            $viewPath = $this->app->getAppPath().$app.$this->config['view_depr'].$view.$this->config['view_depr'];
+        }else{
+            //单应用
+            $path1 = $this->app->getRootPath().$view.$this->config['view_depr'];
+            //多应用
+            $path2 = $this->app->getBasePath().$view.$this->config['view_depr'];
+            if(is_dir($path1)){
+                $viewPath=$path1;
+            }else{
+                $viewPath=$path2;
+            }
+        }
+
+        if(empty($viewPath) || !is_dir($viewPath)){
+            throw new TemplateNotFoundException('template not exists:' . $viewPath, $template);
+        }
+
+        //设置模板路径
+        $this->template->setTemplateDir($viewPath);
     }
 
     public function __call($method, $params)
