@@ -3,8 +3,7 @@
     "description": "smarty for thinkphp6",
     "type": "library",
     "require": {
-        "php": ">=5.4.0",
-        "smarty/smarty": "3.1.x-dev"
+        "php": ">=5.4.0"
     },
     "authors": [
         {
@@ -12,8 +11,5 @@
             "email": "wangzebin2@126.com"
         }
     ],
-    "minimum-stability": "dev",
-    "autoload": {
-        "classmap": ["src/"]
-    }
+    "minimum-stability": "dev"
 }
